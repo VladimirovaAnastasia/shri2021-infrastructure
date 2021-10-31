@@ -48,16 +48,46 @@ async function updateTicket(key, tag) {
 	});
 }
 
+async function commentTestResults(key) {
+	await axios({
+		url: `/v2/issues/${key}/comments`,
+		method: 'POST',
+		data: {
+			text: (await exec('./runTests.js')).stdout,
+		},
+	});
+}
+
+async function commentDockerBuild(key) {
+
+	let dockerResult;
+
+	await exec('./runDocker.js')
+		.then(() => {
+			dockerResult = 'Docker build complete';
+		})
+		.catch(() => {
+			dockerResult = 'Docker build failed';
+		}); 
+
+	await axios({
+		url: `/v2/issues/${key}/comments`,
+		method: 'POST',
+		data: {
+			text: dockerResult,
+		},
+	});
+}
+
 async function generateTicketData(tag) {
 	const date = new Date(Date.now()).toLocaleDateString("ru-RU");
 	const author = await getCommitInfo('%aN <%aE>', true);
-	const changelog = await getCommitInfo('%h %s');
-	const tests = 'tests result'; //(await exec('./runTests.js')).stdout;
+	const changelog = await getCommitInfo('— %s');
 
-	const description = `Автор: ${author}\nДата релиза: ${date}\nВерсия: ${tag}\n\nChangelog:\n${changelog}\n\nРезультат тестов:\n${tests}`;
+	const description = `Автор: ${author}\nДата релиза: ${date}\nВерсия: ${tag}\n\nChangelog:\n${changelog}`;
 
-	return{
-		summary: `Release ${tag} EDITED`,
+	return {
+		summary: `Release ${tag}`,
 		description,
 		queue: 'TMP',
 		unique: `${process.env.ORG_ID}_${tag}`,
@@ -76,12 +106,12 @@ async function checkGit() {
 
 async function getLastTwoTags() {
 	const gitTagOutput = (await exec('git tag')).stdout;
-	const tags = gitTagOutput.split(/\r?\n/);
+	const tags = gitTagOutput.split(/\r?\n/).reverse().filter(Boolean);
 	if (!tags[0]) {
 		console.error('Error: No tags specified');
 		return null;
 	}
-	return [tags[1], tags[0]];
+	return [tags[0], tags[1]];
 }
 
 async function getHashByTag(tag) {
@@ -101,13 +131,17 @@ async function release() {
 	prevTagHash = await getHashByTag(prevTag);
 	currentTagHash = currentTag ? await getHashByTag(currentTag) : null;
 
-	const existingTask = await findTicket(currentTag);
+	let existingTask = await findTicket(currentTag);
 
 	if (existingTask) {
 		await updateTicket(existingTask.key, currentTag);
 	} else {
-		await createTicket(currentTag)
+		existingTask = await createTicket(currentTag);
 	}
+
+	await commentTestResults(existingTask.key);
+
+	await commentDockerBuild(existingTask.key);
 }
 
 release();
