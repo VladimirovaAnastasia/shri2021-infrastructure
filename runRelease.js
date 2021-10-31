@@ -4,53 +4,110 @@ require('dotenv').config();
 
 const util = require('util');
 const exec = util.promisify(require('child_process').exec);
+const axios = require('axios').default;
 
-(async function () {
+axios.defaults.baseURL = 'https://api.tracker.yandex.net';
+axios.defaults.headers.common['Authorization'] = `OAuth ${process.env.OAUTH_TOKEN}`;
+axios.defaults.headers.common['X-Org-ID'] = `${process.env.ORG_ID}`;
 
-  // Проверяем, что гит работает
+let currentTag;
+let prevTag;
+let prevTagHash;
+let currentTagHash;
+
+async function findTicket(tag) {
+	const { data: list } = await axios({
+		url: '/v2/issues/_search',
+		method: 'POST',
+		data: {
+			filter: {
+				'unique': `${process.env.ORG_ID}_${tag}`
+			}
+		}
+	});
+
+	if (!list.length) return false;
+
+	return list[0];
+}
+
+async function createTicket(tag) {
+	await axios({
+		url: '/v2/issues/',
+		method: 'POST',
+		data: await generateTicketData(tag),
+	});
+
+}
+
+async function updateTicket(key, tag) {
+	await axios({
+		url: `/v2/issues/${key}`,
+		method: 'PATCH',
+		data: await generateTicketData(tag),
+	});
+}
+
+async function generateTicketData(tag) {
+	const date = new Date(Date.now()).toLocaleDateString("ru-RU");
+	const author = await getCommitInfo('%aN <%aE>', true);
+	const changelog = await getCommitInfo('%h %s');
+	const tests = 'tests result'; //(await exec('./runTests.js')).stdout;
+
+	const description = `Автор: ${author}\nДата релиза: ${date}\nВерсия: ${tag}\n\nChangelog:\n${changelog}\n\nРезультат тестов:\n${tests}`;
+
+	return{
+		summary: `Release ${tag} EDITED`,
+		description,
+		queue: 'TMP',
+		unique: `${process.env.ORG_ID}_${tag}`,
+	};
+}
+
+async function checkGit() {
 	const gitError = (await exec('git --version')).stderr;
 	if (gitError) {
-		console.error('\x1b[31m', 'Error: Git isn\'t ok\n','\x1b[0m');
+		console.error('Error: Git not available');
     console.error(gitError);
-		return;
+		return false;
 	}
+	return true;
+}
 
-  // Получаем последние два тега.
-	const lastTwoTags = (await exec('git tag | tail --lines=2')).stdout;
-	const [currentTag, prevTag] = lastTwoTags.split(/\r?\n/).reverse();
-
-  // Выбрасываем ошибку если не найдено ни одного тега
-	if (!prevTag) {
-		console.error('\x1b[31m', 'Error: No tags specified\n','\x1b[0m');
-    return;
+async function getLastTwoTags() {
+	const gitTagOutput = (await exec('git tag')).stdout;
+	const tags = gitTagOutput.split(/\r?\n/);
+	if (!tags[0]) {
+		console.error('Error: No tags specified');
+		return null;
 	}
+	return [tags[1], tags[0]];
+}
 
-  // Получаем хэши коммитов тегов
-	const getHashByTag = async function (tag) {
-		return (await exec(`git rev-parse '${tag}'`)).stdout;
+async function getHashByTag(tag) {
+	return (await exec(`git rev-parse '${tag}'`)).stdout.trim('\n');
+}
+
+async function getCommitInfo(format, onlyLast) {
+	const command = `git log --pretty=format:'${format}' ${onlyLast ? '--max-count=1' : ''} ${!currentTag ? '--reverse' : ''} ${prevTagHash}${currentTag ? '...'+currentTagHash : ''}`;
+	return (await exec(command)).stdout;
+}
+
+async function release() {
+	if (!checkGit) return;
+
+	[currentTag, prevTag] = await getLastTwoTags();
+	
+	prevTagHash = await getHashByTag(prevTag);
+	currentTagHash = currentTag ? await getHashByTag(currentTag) : null;
+
+	const existingTask = await findTicket(currentTag);
+
+	if (existingTask) {
+		await updateTicket(existingTask.key, currentTag);
+	} else {
+		await createTicket(currentTag)
 	}
-  const prevTagHash = await getHashByTag(prevTag);
-  const currentTagHash = currentTag ? await getHashByTag(currentTag) : null;
+}
 
-  // Получаем данные коммитов по шаблону
-	const getCommitInfo = async function (format, onlyLast) {
-    const command = `git log --pretty=format:'${format}' ${onlyLast ? '--max-count=1' : ''} ${!currentTag ? '--reverse' : ''} ${prevTagHash}${currentTag ? '...'+currentTagHash : ''}`;
-		return (await exec(command)).stdout;
-	}
-
-  // Готовим данные для релизного тикета
-	const history = await getCommitInfo('%h %s');
-	const author = await getCommitInfo('%aN <%aE>', true);
-	const date = await getCommitInfo('%ad', true);
-  // const tests = (await exec('./runTests.js')).stdout;
-
-	const ticketBody = {
-		author,
-		date,
-		history,
-    // tests,
-	};
-
-	console.log(ticketBody);
-
-})();
+release();
