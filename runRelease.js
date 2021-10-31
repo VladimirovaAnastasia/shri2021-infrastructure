@@ -53,7 +53,7 @@ async function commentTestResults(key) {
 		url: `/v2/issues/${key}/comments`,
 		method: 'POST',
 		data: {
-			text: (await exec('./runTests.js')).stdout,
+			text: (await exec('node ./runTests.js')).stdout,
 		},
 	});
 }
@@ -62,7 +62,7 @@ async function commentDockerBuild(key) {
 
 	let dockerResult;
 
-	await exec('./runDocker.js')
+	await exec('node ./runDocker.js')
 		.then(() => {
 			dockerResult = 'Docker build complete';
 		})
