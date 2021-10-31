@@ -1,5 +1,7 @@
 #!/bin/env node
 
+require('dotenv').config();
+
 const util = require('util');
 const exec = util.promisify(require('child_process').exec);
 
