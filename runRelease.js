@@ -32,12 +32,11 @@ async function findTicket(tag) {
 }
 
 async function createTicket(tag) {
-	await axios({
+	return await axios({
 		url: '/v2/issues/',
 		method: 'POST',
 		data: await generateTicketData(tag),
 	});
-
 }
 
 async function updateTicket(key, tag) {
