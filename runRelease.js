@@ -133,15 +133,17 @@ async function release() {
 	let existingTask = await findTicket(currentTag);
 
 	if (existingTask) {
+		console.log('1')
 		await updateTicket(existingTask.key, currentTag);
 	} else {
+		console.log('2')
 		existingTask = await createTicket(currentTag);
 	}
 	console.log(existingTask)
 
-	await commentTestResults(existingTask.key);
+	await commentTestResults(existingTask.data.key);
 
-	await commentDockerBuild(existingTask.key);
+	await commentDockerBuild(existingTask.data.key);
 }
 
 release();
