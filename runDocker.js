@@ -7,5 +7,6 @@ exec('docker build .').then(({ stdout, stderr }) => {
   if (stderr) {
     console.error(stderr);
   }
+  
   console.log(stdout);
 });
