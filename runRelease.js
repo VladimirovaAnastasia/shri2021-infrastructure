@@ -21,7 +21,7 @@ async function findTicket(tag) {
 		method: 'POST',
 		data: {
 			filter: {
-				'unique': `${process.env.ORG_ID}_${tag}`
+				'unique': `${process.env.ORG_ID}_${tag}_test`
 			}
 		}
 	});
@@ -67,7 +67,7 @@ async function commentDockerBuild(key) {
 		})
 		.catch(() => {
 			dockerResult = 'Docker build failed';
-		}); 
+		});
 
 	await axios({
 		url: `/v2/issues/${key}/comments`,
@@ -89,7 +89,7 @@ async function generateTicketData(tag) {
 		summary: `Release ${tag}`,
 		description,
 		queue: 'TMP',
-		unique: `${process.env.ORG_ID}_${tag}`,
+		unique: `${process.env.ORG_ID}_${tag}_test`,
 	};
 }
 
@@ -126,7 +126,7 @@ async function release() {
 	if (!checkGit) return;
 
 	[currentTag, prevTag] = await getLastTwoTags();
-	
+
 	prevTagHash = await getHashByTag(prevTag);
 	currentTagHash = currentTag ? await getHashByTag(currentTag) : null;
 
@@ -137,6 +137,7 @@ async function release() {
 	} else {
 		existingTask = await createTicket(currentTag);
 	}
+	console.log(existingTask)
 
 	await commentTestResults(existingTask.key);
 
